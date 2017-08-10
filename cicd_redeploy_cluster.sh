@@ -45,39 +45,24 @@ salt -C 'I@docker:swarm' state.sls salt
 salt -C 'I@docker:swarm' mine.flush
 salt -C 'I@docker:swarm' mine.update
 
-salt -C 'I@docker:swarm' state.sls docker.swarm
+rm /var/lib/docker/swarm/docker-state.json
+rm /var/lib/docker/swarm/state.json
+salt-call state.sls docker.swarm
+salt-call mine.flush
+salt-call mine.update
+
+salt -C 'cid*' state.sls docker.swarm
 sleep 10
 
 # launch containers
 salt -C 'I@docker:swarm:role:master' state.sls docker.client
 sleep 5
 salt -C 'I@docker:swarm:role:master' state.sls docker.client
+sleep 30
 
 cid=`salt-call pillar.data _param:cicd_control_address | sed -n 4p`
 
-# max 100 checks if LDAP, Gerrit and Jenkins container is up
-a=0
-while [ $a -lt 100 ]
-do
-   curl -sf ldap://$cid >/dev/null
-   RC=$?
-   if [ $RC -eq 0 ]
-   then
-      break
-   fi
-   a=`expr $a + 1`
-   echo "Waiting for LDAP container to be up"
-   sleep 5
-done
-
-if [ $a -eq 100 ]
-then
-   echo "LDAP container did not come up. Please check the logs."
-   exit 1
-fi
-
-salt -C 'I@openldap:client' cmd.shell 'salt-call state.sls openldap'
-
+# max 100 checks if Gerrit and Jenkins container is up
 a=0
 while [ $a -lt 100 ]
 do
@@ -99,6 +84,7 @@ then
    exit 1
 fi
 
+salt -C 'I@openldap:client' cmd.shell 'salt-call state.sls openldap'
 salt -C 'I@gerrit:client' cmd.shell 'salt-call state.sls gerrit'
 
 a=0
@@ -115,6 +101,8 @@ do
    sleep 5
 done
 
+sleep 30
+
 if [ $a -eq 100 ]
 then
    echo "Jenkins container did not come up. Please check the logs and command 'docker node ls' if all cluster nodes are reachable"
@@ -126,4 +114,3 @@ salt -C 'I@jenkins:client' cmd.shell 'salt-call state.sls jenkins'
 
 # create a flag file about cicd cluster deployment
 touch $CICD_DEPLOYED
-
