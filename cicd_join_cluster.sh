@@ -13,6 +13,25 @@ fi
 apt update
 service salt-minion restart
 
+# initialize new docker swarm cluster
+rm /var/lib/docker/swarm/docker-state.json
+rm /var/lib/docker/swarm/state.json
+salt-call state.sls docker.swarm
+cd /etc/docker/compose/docker/
+docker stack deploy --compose-file docker-compose.yml docker
+cd /etc/docker/compose/aptly/
+docker stack deploy --compose-file docker-compose.yml aptly
+cd /etc/docker/compose/ldap/
+docker stack deploy --compose-file docker-compose.yml ldap
+cd /etc/docker/compose/gerrit/
+docker stack deploy --compose-file docker-compose.yml gerrit
+cd /etc/docker/compose/jenkins/
+docker stack deploy --compose-file docker-compose.yml jenkins
+cd /etc/docker/compose/aptly/
+docker stack deploy --compose-file docker-compose.yml aptly
+cd /etc/docker/compose/ldap/
+docker stack deploy --compose-file docker-compose.yml ldap
+
 #deploy the rest of cicd nodes
 salt -C 'cid*' saltutil.refresh_pillar
 salt -C 'cid*' saltutil.sync_all
@@ -31,91 +50,17 @@ for vol_name in $volumes; do gluster volume add-brick $vol_name replica 3 $cid03
 
 # join docker swarm
 salt -C 'cid*' state.sls glusterfs.client
-salt -C 'cid*' state.sls haproxy,keepalived
+salt -C 'cid*' state.sls keepalived,haproxy
 salt -C 'cid*' state.sls docker.host
 
 salt -C 'I@docker:swarm' state.sls salt
 salt -C 'I@docker:swarm' mine.flush
 salt -C 'I@docker:swarm' mine.update
 
-salt -C 'I@docker:swarm' state.sls docker.swarm
+salt -C 'cid*' state.sls docker.swarm
 sleep 10
-
-# launch containers
-salt -C 'I@docker:swarm:role:master' state.sls docker.client
-sleep 5
-salt -C 'I@docker:swarm:role:master' state.sls docker.client
-
-cid=`salt-call pillar.data _param:cicd_control_address | sed -n 4p`
-
-# max 100 checks if LDAP, Gerrit and Jenkins container is up
-a=0
-while [ $a -lt 100 ]
-do
-   curl -sf ldap://$cid >/dev/null
-   RC=$?
-   if [ $RC -eq 0 ]
-   then
-      break
-   fi
-   a=`expr $a + 1`
-   echo "Waiting for LDAP container to be up"
-   sleep 5
-done
-
-if [ $a -eq 100 ]
-then
-   echo "LDAP container did not come up. Please check the logs."
-   exit 1
-fi
-
-salt -C 'I@openldap:client' cmd.shell 'salt-call state.sls openldap'
-
-a=0
-while [ $a -lt 100 ]
-do
-   curl -sf $cid:8080 >/dev/null
-   RC=$?
-   if [ $RC -eq 0 ]
-   then
-      break
-   fi
-   a=`expr $a + 1`
-   echo "Waiting for gerrit_server container to be up"
-   sleep 5
-done
-
-if [ $a -eq 100 ]
-then
-   echo "Gerrit_server container did not come up. Please check the logs and command 'docker node ls' if all cluster nodes are reachable"
-   docker node ls
-   exit 1
-fi
-
-salt -C 'I@gerrit:client' cmd.shell 'salt-call state.sls gerrit'
-
-a=0
-while [ $a -lt 100 ]
-do
-   curl -s $cid:8081 >/dev/null
-   RC=$?
-   if [ $RC -eq 0 ]
-   then
-      break
-   fi
-   a=`expr $a + 1`
-   echo "Waiting for Jenkins container to be up"
-   sleep 5
-done
-
-if [ $a -eq 100 ]
-then
-   echo "Jenkins container did not come up. Please check the logs and command 'docker node ls' if all cluster nodes are reachable"
-   docker node ls
-   exit 1
-fi
-
-salt -C 'I@jenkins:client' cmd.shell 'salt-call state.sls jenkins'
+salt -C 'cid*' state.sls aptly
+salt -C 'I@docker:swarm' cmd.shell 'systemctl restart docker' 
 
 # create a flag file about cicd cluster deployment
 touch $CICD_DEPLOYED

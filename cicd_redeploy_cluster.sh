@@ -38,7 +38,7 @@ for vol_name in $volumes; do gluster volume add-brick $vol_name replica 3 $cid03
 
 # join docker swarm
 salt -C 'cid*' state.sls glusterfs.client
-salt -C 'cid*' state.sls haproxy,keepalived
+salt -C 'cid*' state.sls keepalived,haproxy
 salt -C 'cid*' state.sls docker.host
 
 salt -C 'I@docker:swarm' state.sls salt
