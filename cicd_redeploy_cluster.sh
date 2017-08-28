@@ -37,13 +37,13 @@ for vol_name in $volumes; do gluster volume add-brick $vol_name replica 2 $cid02
 for vol_name in $volumes; do gluster volume add-brick $vol_name replica 3 $cid03:/srv/glusterfs/$vol_name force; done
 
 # join docker swarm
-salt -C 'cid*' state.sls glusterfs.client
+salt -t 2 -C 'I@docker:swarm' state.sls glusterfs.client
 salt -C 'cid*' state.sls keepalived,haproxy
 salt -C 'cid*' state.sls docker.host
 
-salt -C 'I@docker:swarm' state.sls salt
-salt -C 'I@docker:swarm' mine.flush
-salt -C 'I@docker:swarm' mine.update
+salt -t 2 -C 'I@docker:swarm' state.sls salt
+salt -t 2 -C 'I@docker:swarm' mine.flush
+salt -t 2 -C 'I@docker:swarm' mine.update
 
 rm /var/lib/docker/swarm/docker-state.json
 rm /var/lib/docker/swarm/state.json
